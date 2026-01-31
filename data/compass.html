@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <h1>RTK Compass</h1>    
+    <!-- Compass Display -->
+    <div class="compass-container">
+        <img src="/compasscard.png" class="compass-circle" alt="Compass">
+    </div>
+   
+    <div class="attitude-container">
+        <div class="attitude-field">
+            <label>Heading:</label>
+            <span id="heading-value">--</span>°
+        </div>
+        <div class="attitude-field">
+            <label>Pitch:</label>
+            <span id="pitch-value">--</span>°
+        </div>
+        <div class="attitude-field">
+            <label>Roll:</label>
+            <span id="roll-value">--</span>°
+        </div>
+    </div>
+    
+    <script src="/sse.js"></script>
+</body>
+</html>

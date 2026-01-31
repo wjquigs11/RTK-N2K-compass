@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div id="nmea-container">
+        <div class="nmea-line">Waiting for data...</div>
+    </div>
+    
+    <div class="status-container">
+        <div class="status-field">
+            <label>Heading:</label>
+            <span id="heading-value">-</span>°
+        </div>
+        <div class="status-field">
+            <label>Quality:</label>
+            <span id="sol-stat">-</span>
+        </div>
+        <div class="status-field">
+            <label>Satellites:</label>
+            <span id="pos-type">-</span>
+        </div>
+        <div class="status-field">
+            <label>UTC:</label>
+            <span id="utc-value">-</span>
+        </div>
+        <div class="status-field">
+            <label>Fix Quality:</label>
+            <span id="quality-value">-</span>
+        </div>
+        <div class="status-field">
+            <label>Baseline:</label>
+            <span id="baseline-value">-</span>
+        </div>
+    </div>
+    <div class="controls-container">
+        <div class="button-group">
+            <button id="freeze-btn" class="freeze-btn" onclick="freezeData()">Freeze</button>
+            <button id="resume-btn" class="resume-btn" onclick="resumeData()" disabled>Resume</button>
+            <button id="settings-btn" class="settings-btn" onclick="window.location.href='/settings.html'">Settings</button>
+        </div>
+        <label for="command-input" class="command-label">Send Command to UM-982:</label>
+        <input type="text" id="command-input" class="command-input" placeholder="Enter command...">
+        <button class="send-btn" onclick="sendCommand()">Send</button>
+    </div>
+    <script src="/sse.js"></script>
+</body>
+</html>
