@@ -118,11 +118,11 @@ void setup() {
     // Set up DRD if another reboot happens in 10 seconds
     preferences.putBool("DRD", true);
   }
-  if (SPIFFS.begin()) {
-    Serial.println("opened SPIFFS");
-    readspiffs();
+  if (LittleFS.begin()) {
+    Serial.println("opened LittleFS");
+    readlittlefs();
   } else {
-    Serial.println("failed to open SPIFFS");
+    Serial.println("failed to open LittleFS");
   }
   Serial.println("Starting WiFi connection...");
 #ifdef FIRSTRUN

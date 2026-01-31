@@ -1,10 +1,10 @@
 #include "include.h"
 
-void readspiffs() {
-    Serial.println("=== SPIFFS File System Contents ===");
+void readlittlefs() {
+    Serial.println("=== LittleFS File System Contents ===");
     
     // Open the root directory
-    File root = SPIFFS.open("/");
+    File root = LittleFS.open("/");
     if (!root) {
         Serial.println("Failed to open root directory");
         return;
@@ -15,8 +15,8 @@ void readspiffs() {
         return;
     }
     
-    // List all files in SPIFFS
-    Serial.println("Files found on SPIFFS:");
+    // List all files in LittleFS
+    Serial.println("Files found on LittleFS:");
     File file = root.openNextFile();
     while (file) {
         if (file.isDirectory()) {
@@ -30,7 +30,7 @@ void readspiffs() {
     Serial.println("\n=== Reading index.html ===");
     
     // Open and read index.html specifically
-    File indexFile = SPIFFS.open("/index.html", "r");
+    File indexFile = LittleFS.open("/index.html", "r");
     if (!indexFile) {
         Serial.println("Failed to open index.html");
         return;
@@ -49,5 +49,5 @@ void readspiffs() {
     Serial.println("End of index.html contents");
     
     indexFile.close();
-    Serial.println("=== SPIFFS reading complete ===\n");
+    Serial.println("=== LittleFS reading complete ===\n");
 }

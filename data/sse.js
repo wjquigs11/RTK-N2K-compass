@@ -5,7 +5,7 @@ let globalHostname = null;
 var container = document.getElementById('nmea-container');
 var isFrozen = false;
 // Maximum number of NMEA data lines to display before scrolling
-var maxNmeaLines = 50;
+var maxNmeaLines = 40;
 
 // Function to get the hostname from /host endpoint
 function getSSEHostname() {

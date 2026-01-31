@@ -10,26 +10,26 @@ void startWebServer() {
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
     Serial.println("index.html");
-    request->send(SPIFFS, "/index.html", "text/html; charset=UTF-8");
+    request->send(LittleFS, "/index.html", "text/html; charset=UTF-8");
   });
 
   server.on("/compass", HTTP_GET, [](AsyncWebServerRequest * request) {
     Serial.println("compass.html");
-    request->send(SPIFFS, "/compass.html", "text/html; charset=UTF-8");
+    request->send(LittleFS, "/compass.html", "text/html; charset=UTF-8");
   });
 
   server.on("/settings.html", HTTP_GET, [](AsyncWebServerRequest * request) {
     Serial.println("settings.html");
-    request->send(SPIFFS, "/settings.html", "text/html; charset=UTF-8");
+    request->send(LittleFS, "/settings.html", "text/html; charset=UTF-8");
   });
 
   server.on("^.*\\.png$", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("Serving PNG: " + request->url());
-    request->send(SPIFFS, request->url(), "image/png");
+    request->send(LittleFS, request->url(), "image/png");
   });
 
   // Set up static file serving with content type mapping for HTML files
-  server.serveStatic("/", SPIFFS, "/")
+  server.serveStatic("/", LittleFS, "/")
     .setDefaultFile("index.html");
     //.setTemplateProcessor([](const String& var) -> String {
     //  return String();

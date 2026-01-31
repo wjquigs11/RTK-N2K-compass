@@ -4,7 +4,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 
 // Data structure to represent heading data from PQTMTAR and UNIHEADING
 struct HeadingData {
@@ -98,8 +98,8 @@ extern Handler appHandler;
 extern Handler togHandler;
 #endif
 
-// SPIFFS functions
-void readspiffs();
+// LittleFS functions
+void readlittlefs();
 
 extern bool debugRTK;
 #ifdef ELEGANTOTA

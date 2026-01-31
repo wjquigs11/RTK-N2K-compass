@@ -1,0 +1,10 @@
+.pio
+.vscode
+data.old
+*.sh
+*.zip
+*.txt
+*.log
+*.py
+*.bin
+
