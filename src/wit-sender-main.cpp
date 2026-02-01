@@ -11,7 +11,7 @@ char prbuf[PRBUF];
 #ifdef FIRSTRUN
 String ssid = "dmlgooIoT";
 String pass = "holachica24";
-String host = "wit";
+String host = "um982";
 #else
 String ssid;
 String pass;

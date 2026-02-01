@@ -42,86 +42,119 @@ function updateCompass(heading) {
 
 // Heading data is now received exclusively via SSE events
 
+// Shared function to update status elements based on data
+function updateStatusElements(data) {
+    // Map quality value to text
+    var qualityText = "";
+    switch(data.quality) {
+        case 0: qualityText = "No Fix"; break;
+        case 1: qualityText = "Single"; break;
+        case 2: qualityText = "DGPS"; break;
+        case 4: qualityText = "RTK Fixed"; break;
+        case 5: qualityText = "RTK Float"; break;
+        case 6: qualityText = "Estimated"; break;
+        default: qualityText = "Unknown";
+    }
+    
+    // Get DOM elements
+    var pitchElement = document.getElementById('pitch-value');
+    var rollElement = document.getElementById('roll-value');
+    var solStatElement = document.getElementById('sol-stat');
+    var posTypeElement = document.getElementById('pos-type');
+    var utcValueElement = document.getElementById('utc-value');
+    var qualValueElement = document.getElementById('quality-value');
+    var baseValueElement = document.getElementById('baseline-value');
+    var latValueElement = document.getElementById('latitude-value');
+    var lonValueElement = document.getElementById('longitude-value');
+
+    // Update DOM elements if they exist
+    if (solStatElement) {
+        solStatElement.textContent = qualityText;
+    }
+    if (posTypeElement) {
+        posTypeElement.textContent = `${data.usedSV}`;
+    }
+    if (utcValueElement) {
+        utcValueElement.textContent = data.utc;
+    }
+    if (qualValueElement) {
+        qualValueElement.textContent = data.quality;
+    }
+    if (baseValueElement) {
+        baseValueElement.textContent = data.length;
+    }
+    if (pitchElement) {
+        pitchElement.textContent = data.pitch.toFixed(2);
+        console.log("Pitch element updated to:", pitchElement.textContent);
+    }
+    if (rollElement) {
+        rollElement.textContent = data.roll.toFixed(2);
+        console.log("Roll element updated to:", rollElement.textContent);
+    }
+    if (latValueElement) {
+        latValueElement.textContent = data.latitude;
+    }
+    if (lonValueElement) {
+        lonValueElement.textContent = data.longitude;
+    }
+}
+
+// Shared function to process JSON data from any event type
+function processJSONData(data, eventType) {
+    console.log(`DEBUG: Processing JSON data from ${eventType} event:`, data);
+    
+    // Update compass with heading data
+    if (data.heading !== undefined) {
+        updateCompass(data.heading);
+    }
+    
+    // Create formatted display text based on data structure
+    var displayText = "";
+    if (data.heading !== undefined && data.pitch !== undefined && data.roll !== undefined) {
+        // PQTMTAR data
+        displayText = `Heading: ${data.heading.toFixed(2)}° | Pitch: ${data.pitch.toFixed(2)}° | Roll: ${data.roll.toFixed(2)}° | Quality: ${data.quality} | UTC: ${data.utc}`;
+    } else if (data.antennaStatus) {
+        // PQTMANTENNASTATUS data
+        displayText = `Antenna Status - Primary: ${data.antennaStatus.primary} | Secondary: ${data.antennaStatus.secondary}`;
+    } else if (data.gnrmc) {
+        // GNRMC data
+        displayText = `GNRMC - UTC: ${data.gnrmc.utc} | Lat: ${data.gnrmc.lat.toFixed(6)} | Lon: ${data.gnrmc.lon.toFixed(6)} | Speed: ${data.gnrmc.speed} kts`;
+    } else {
+        displayText = JSON.stringify(data);
+    }
+    
+    // Add to display container if it exists
+    if (container && container.appendChild) {
+        var newLine = document.createElement('div');
+        newLine.className = eventType === 'update' ? 'nmea-line json-data' : 'nmea-line';
+        newLine.textContent = displayText;
+        container.appendChild(newLine);
+        
+        // Limit the number of lines to prevent excessive memory usage
+        while (container.children.length > maxNmeaLines) {
+            container.removeChild(container.firstChild);
+        }
+        
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    // Update status elements if we have PQTMTAR data (heading/pitch/roll data)
+    if (data.heading !== undefined && data.pitch !== undefined && data.roll !== undefined) {
+        updateStatusElements(data);
+    }
+}
+
 function setupEventListeners(eventSource) {
+    // Handle raw NMEA sentences (sent as "message" events from server)
     eventSource.onmessage = function(event) {
-        //console.log("DEBUG: Received message event:", event.data);
         if (!isFrozen) {
             try {
-                // Parse the JSON data
+                // Try to parse as JSON first
                 var data = JSON.parse(event.data);
-                console.log("DEBUG: Parsed JSON data from message event:", data);
-                
-                // Update compass with heading data
-                if (data.heading !== undefined) {
-                    updateCompass(data.heading);
-                }
-                
-                // Create formatted display text
-                var displayText = `Heading: ${data.heading.toFixed(2)}° | Pitch: ${data.pitch.toFixed(2)}° | Roll: ${data.roll.toFixed(2)}° | Quality: ${data.quality} | UTC: ${data.utc}`;
-                
-                // Add to display container if it exists
-                if (container && container.appendChild) {
-                    var newLine = document.createElement('div');
-                    newLine.className = 'nmea-line';
-                    newLine.textContent = displayText;
-                    container.appendChild(newLine);
-                    
-                    // Limit the number of lines to prevent excessive memory usage
-                    while (container.children.length > maxNmeaLines) {
-                        container.removeChild(container.firstChild);
-                    }
-                    
-                    container.scrollTop = container.scrollHeight;
-                }
-                
-                // Update status elements based on quality value
-                var qualityText = "";
-                switch(data.quality) {
-                    case 0: qualityText = "No Fix"; break;
-                    case 1: qualityText = "Single"; break;
-                    case 2: qualityText = "DGPS"; break;
-                    case 4: qualityText = "RTK Fixed"; break;
-                    case 5: qualityText = "RTK Float"; break;
-                    case 6: qualityText = "Estimated"; break;
-                    default: qualityText = "Unknown";
-                }
-                
-                // Check if DOM elements exist and log their status
-                var pitchElement = document.getElementById('pitch-value');
-                var rollElement = document.getElementById('roll-value');
-                var solStatElement = document.getElementById('sol-stat');
-                var posTypeElement = document.getElementById('pos-type');
-                var utcValueElement = document.getElementById('utc-value');     
-                var qualValueElement = document.getElementById('quality-value');     
-                var baseValueElement = document.getElementById('baseline-value');     
-                if (solStatElement) {
-                    solStatElement.textContent = qualityText;
-                }
-                if (posTypeElement) {
-                    posTypeElement.textContent = `${data.usedSV}`;
-                }
-                if (utcValueElement) {
-                    utcValueElement.textContent = data.utc;
-                }
-                if (qualValueElement) {
-                    qualValueElement.textContent = data.quality;
-                }
-                if (baseValueElement) {
-                    baseValueElement.textContent = data.length;
-                }
-                if (pitchElement) {
-                    pitchElement.textContent = data.pitch.toFixed(2);
-                    console.log("Pitch element updated to:", pitchElement.textContent);
-                }
-                if (rollElement) {
-                    rollElement.textContent = data.roll.toFixed(2);
-                    console.log("Roll element updated to:", rollElement.textContent);
-                }
+                processJSONData(data, 'message');
             } catch (e) {
-                //console.log("DEBUG: Non-JSON message event (NMEA sentence):", event.data);
-                // Only add NMEA sentences to container if it exists (index.html has it, compass.html doesn't)
+                // Non-JSON data - should be raw NMEA sentences
                 if (container && container.appendChild) {
-                    // Non-JSON data is expected; should be NMEA sentences so add them to the scrolling window
                     var newLine = document.createElement('div');
                     newLine.className = 'nmea-line';
                     newLine.textContent = event.data;
@@ -138,83 +171,12 @@ function setupEventListeners(eventSource) {
         }
     };
 
-    // Add listener for "update" events (this is what the server actually sends for JSON data)
+    // Handle parsed JSON data (sent as "update" events from server)
     eventSource.addEventListener('update', function(e) {
-        console.log("DEBUG: Received update event:", e.data);
         if (!isFrozen) {
             try {
                 var data = JSON.parse(e.data);
-                console.log("DEBUG: Parsed JSON data from update event:", data);
-                
-                // Update compass with heading data
-                if (data.heading !== undefined) {
-                    updateCompass(data.heading);
-                }
-                
-                // Create formatted display text based on data structure
-                var displayText = "";
-                if (data.heading !== undefined && data.pitch !== undefined && data.roll !== undefined) {
-                    // PQTMTAR data
-                    displayText = `Heading: ${data.heading.toFixed(2)}° | Pitch: ${data.pitch.toFixed(2)}° | Roll: ${data.roll.toFixed(2)}° | Quality: ${data.quality} | UTC: ${data.utc}`;
-                } else if (data.antennaStatus) {
-                    // PQTMANTENNASTATUS data
-                    displayText = `Antenna Status - Primary: ${data.antennaStatus.primary} | Secondary: ${data.antennaStatus.secondary}`;
-                } else if (data.gnrmc) {
-                    // GNRMC data
-                    displayText = `GNRMC - UTC: ${data.gnrmc.utc} | Lat: ${data.gnrmc.lat.toFixed(6)} | Lon: ${data.gnrmc.lon.toFixed(6)} | Speed: ${data.gnrmc.speed} kts`;
-                } else {
-                    displayText = JSON.stringify(data);
-                }
-                
-                // Add to display container if it exists
-                if (container && container.appendChild) {
-                    var newLine = document.createElement('div');
-                    newLine.className = 'nmea-line json-data';
-                    newLine.textContent = displayText;
-                    container.appendChild(newLine);
-                    
-                    // Limit the number of lines to prevent excessive memory usage
-                    while (container.children.length > maxNmeaLines) {
-                        container.removeChild(container.firstChild);
-                    }
-                    
-                    container.scrollTop = container.scrollHeight;
-                }
-                
-                // Update status elements if we have PQTMTAR data
-                if (data.heading !== undefined && data.pitch !== undefined && data.roll !== undefined) {
-                    var qualityText = "";
-                    switch(data.quality) {
-                        case 0: qualityText = "No Fix"; break;
-                        case 1: qualityText = "Single"; break;
-                        case 2: qualityText = "DGPS"; break;
-                        case 4: qualityText = "RTK Fixed"; break;
-                        case 5: qualityText = "RTK Float"; break;
-                        default: qualityText = "Unknown";
-                    }
-                    
-                    var pitchElement = document.getElementById('pitch-value');
-                    var rollElement = document.getElementById('roll-value');
-                    var solStatElement = document.getElementById('sol-stat');
-                    var posTypeElement = document.getElementById('pos-type');
-                    var utcValueElement = document.getElementById('utc-value');
-
-                    if (solStatElement) {
-                        solStatElement.textContent = qualityText;
-                    }
-                    if (posTypeElement) {
-                        posTypeElement.textContent = `${data.usedSV}`;
-                    }
-                    if (utcValueElement) {
-                        utcValueElement.textContent = data.utc;
-                    }
-                    if (pitchElement) {
-                        pitchElement.textContent = data.pitch.toFixed(2);
-                    }
-                    if (rollElement) {
-                        rollElement.textContent = data.roll.toFixed(2);
-                    }
-                }
+                processJSONData(data, 'update');
             } catch (e) {
                 console.error("DEBUG: Error parsing update event JSON:", e, "Data:", e.data);
             }
