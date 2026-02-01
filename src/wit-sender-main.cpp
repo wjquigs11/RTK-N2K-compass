@@ -52,11 +52,9 @@ const char* startupRTKcommands[] = {
   //"$PQTMRESTOREPAR*", // restore all parameters
   "$PQTMCFGMSGRATE,W,GSV,20*",  // GSV (sat in view) output rate to every 20 position fixes
   "$PQTMCFGMSGRATE,W,GSA,20*",  // GSA (satellites used in fix)
-  "$PQTMCFGMSGRATE,W,GLL,0*",
-  "$PQTMCFGMSGRATE,W,GGA,0*", 
-  "$PQTMCFGMSGRATE,W,RMC,10*", 
-  "$PQTMCFGMSGRATE,W,PQTMANTENNASTATUS,20,2*",
-  "$PQTMCFGMSGRATE,W,PQTMTAR,1,1*",
+  "$PQTMCFGMSGRATE,W,RMC,10*",  // navigation info
+  "$PQTMCFGMSGRATE,W,PQTMANTENNASTATUS,20,2*",  // antenna status
+  "$PQTMCFGMSGRATE,W,PQTMTAR,1,1*", // attitude
   "$PQTMSAVEPAR*",
   "$PQTMCFGMSGRATE,R,GSV*", // get GSV output rate
   "$PQTMCFGMSGRATE,R,GSA*", 
