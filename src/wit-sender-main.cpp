@@ -1,17 +1,15 @@
 #include "include.h"
 
-#ifdef ARDUINOOTA
-#include <ArduinoOTA.h>
-#endif
+tBoatData boatData = {0};
 
 #define MAXLEN 64
 char prbuf[PRBUF];
 
 //#define FIRSTRUN
 #ifdef FIRSTRUN
-String ssid = "dmlgooIoT";
-String pass = "holachica24";
-String host = "um982";
+String ssid = "yourSSID";
+String pass = "yourPassword";
+String host = "yourHostname";
 #else
 String ssid;
 String pass;
@@ -52,11 +50,10 @@ const char* startupRTKcommands[] = {
   "$PQTMCFGCNST,R*",  // constellation status
   "$PQTMCFGBLD,R*", // baseline
   //"$PQTMRESTOREPAR*", // restore all parameters
-  "$PQTMCFGMSGRATE,W,GSV,20*", // set GSV output rate to every 20 position fixes
-  "$PQTMCFGMSGRATE,W,GSA,20*",
-  "$PQTMCFGMSGRATE,W,VTG,20*",
-  "$PQTMCFGMSGRATE,W,GLL,20*",
-  "$PQTMCFGMSGRATE,W,GGA,10*", 
+  "$PQTMCFGMSGRATE,W,GSV,20*",  // GSV (sat in view) output rate to every 20 position fixes
+  "$PQTMCFGMSGRATE,W,GSA,20*",  // GSA (satellites used in fix)
+  "$PQTMCFGMSGRATE,W,GLL,0*",
+  "$PQTMCFGMSGRATE,W,GGA,0*", 
   "$PQTMCFGMSGRATE,W,RMC,10*", 
   "$PQTMCFGMSGRATE,W,PQTMANTENNASTATUS,20,2*",
   "$PQTMCFGMSGRATE,W,PQTMTAR,1,1*",
@@ -73,7 +70,7 @@ int SSEfrequency=1;
 unsigned long now;
 
 // Global heading data structure is defined in parsers.cpp
-extern HeadingData headingData;
+//extern HeadingData headingData;
 
 bool debugRTK = true; // echo RTK to serial
 bool otaInProgress = false;  // Flag to indicate OTA update is in progress
@@ -95,16 +92,8 @@ char nmeaBuffer[MAXBUF];
 int nmeaBufferIndex = 0;
 bool inSentence = false;
 
-// send every message as SSE, or just parsed/json data?
-bool sendAllMessagesSSE = true; 
-
-// Forward declarations
-void setupUMsender();
-void initUMSocket();
-void notifyTCPclients(const char* data);
-void handleTCPConnections();
-void sendNMEAtoWebClients(char* nmeaLine);
-void loopUMsender();
+bool sendNMEA = true; // send NMEA to web/TCP clients?
+bool sendJSON = false;  // send JSON-parsed data to web/TCP clients?
 
 void setup() {
   Serial.begin(115200); delay(333);
@@ -201,6 +190,9 @@ void setup() {
   // Initialize UM serial and TCP socket only if not in double reset mode
   if (!doubleReset) {
     setupUMsender();
+#ifdef N0183
+    setupNMEA();
+#endif
   } else {
     Serial.println("Skipping TCP server initialization...DRD");
   }
@@ -286,89 +278,6 @@ void handleTCPConnections() {
   }
 }
 
-//void sendNMEAtoWebClients(const char* nmeaLine) {
-void sendNMEAtoWebClients(char* nmeaLine) {
-  char* updateString = NULL;
-  if (serverStarted && sendAllMessagesSSE) {
-    events.send(nmeaLine, "message", millis());
-#ifdef UM982
-    if (strstr(nmeaLine, "#UNIHEADINGA"))
-      updateString = parseUNIHEADING(nmeaLine);
-#endif
-#ifdef WTRTK
-    if (strstr(nmeaLine, "$PQTMANTENNASTATUS"))
-      updateString = parsePQTMANTENNASTATUS(nmeaLine);
-    else if (strstr(nmeaLine, "$PQTMTAR"))
-      updateString = parsePQTMTAR(nmeaLine);
-#endif
-    // Parse GNRMC messages from any GNSS source
-    if (strstr(nmeaLine, "$GNRMC"))
-      updateString = parseGNRMC(nmeaLine);
-    // Parser functions now always return a valid string or empty JSON
-    if (updateString != NULL && strlen(updateString) > 0) {
-      // Timer-based throttling to prevent SSE queue overflow
-      static unsigned long lastSSEsend = 0;
-      if (now - lastSSEsend >= (SSEfrequency * 1000)) {
-        events.send(updateString, "update", millis());
-        lastSSEsend = now;
-#ifdef N2K
-        // send heading update on N2K
-        if (n2kSend) xmitHeading(headingData.heading);
-#endif
-      }
-    }
-  }
-}
-
-void loopUMsender() {
-  handleTCPConnections();
-  // Send UM serial data with NMEA sentence buffering
-  if (UMserial.available()) {
-    while (UMserial.available()) {
-      char c = UMserial.read();
-      if (c == '$' || c == '#') {
-        // Start of new NMEA sentence
-        if (nmeaBufferIndex > 0) {
-          // Send previous incomplete sentence if any
-          nmeaBuffer[nmeaBufferIndex] = '\0'; // Null-terminate the string
-          notifyTCPclients(nmeaBuffer);
-          if (debugRTK) {
-            Serial.print(nmeaBuffer);
-          }
-        }
-        nmeaBuffer[0] = c; // start sentence with whatever char was used $ or #
-        nmeaBufferIndex = 1;
-        inSentence = true;
-      } else if (c == '\n' && inSentence) {
-        // End of NMEA sentence
-        if (nmeaBufferIndex < MAXBUF - 1) {
-          nmeaBuffer[nmeaBufferIndex++] = c;
-          nmeaBuffer[nmeaBufferIndex] = '\0'; // Null-terminate the string
-          notifyTCPclients(nmeaBuffer);
-          // note that the parsers are 'destructive' so we should log the buffer before parsing
-          if (debugRTK) {
-            Serial.print(nmeaBuffer);
-          }
-          // Send to web clients via SSE and discard
-          sendNMEAtoWebClients(nmeaBuffer);
-        }
-        nmeaBufferIndex = 0;
-        inSentence = false;
-      } else if (inSentence) {
-        // Continue building sentence
-        if (nmeaBufferIndex < MAXBUF - 1) {
-          nmeaBuffer[nmeaBufferIndex++] = c;
-        }
-      } else {
-        // Character outside of sentence (shouldn't happen if proper NMEA)
-        if (debugRTK) {
-          Serial.print(c);
-        }
-      }
-    }
-  }
-}
-
 void loop() {
   static bool drdCleared = false;
   static unsigned long lastDotTime = 0;
@@ -398,7 +307,9 @@ void loop() {
   }
   // Handle UM serial communication and TCP clients only if OTA is not in progress and not in doubleReset mode
   if (!otaInProgress && !doubleReset) {
-    loopUMsender();
+#ifdef N0183
+    loopNMEA();
+#endif
 #ifdef WEBSERIAL
     WebSerial.loop();
 #endif
@@ -428,4 +339,6 @@ void loop() {
 #ifdef ELEGANTOTA
   ElegantOTA.loop();
 #endif
+  // Clean up WebSocket clients
+  ws.cleanupClients();
 }

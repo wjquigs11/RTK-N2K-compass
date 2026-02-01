@@ -1,6 +1,6 @@
-// Combined SSE and Compass functionality
+// Combined WebSocket and Compass functionality
 // Global variables
-let globalEventSource = null;
+let globalWebSocket = null;
 let globalHostname = null;
 var container = document.getElementById('nmea-container');
 var isFrozen = false;
@@ -8,7 +8,7 @@ var isFrozen = false;
 var maxNmeaLines = 40;
 
 // Function to get the hostname from /host endpoint
-function getSSEHostname() {
+function getWSHostname() {
     return fetch('/host')
         .then(response => response.text())
         .then(hostname => {
@@ -39,8 +39,6 @@ function updateCompass(heading) {
         headingDisplay.innerHTML = Math.round(heading);
     }
 }
-
-// Heading data is now received exclusively via SSE events
 
 // Shared function to update status elements based on data
 function updateStatusElements(data) {
@@ -99,9 +97,9 @@ function updateStatusElements(data) {
     }
 }
 
-// Shared function to process JSON data from any event type
-function processJSONData(data, eventType) {
-    console.log(`DEBUG: Processing JSON data from ${eventType} event:`, data);
+// Shared function to process JSON data
+function processJSONData(data) {
+    console.log(`DEBUG: Processing JSON data:`, data);
     
     // Update compass with heading data
     if (data.heading !== undefined) {
@@ -126,7 +124,7 @@ function processJSONData(data, eventType) {
     // Add to display container if it exists
     if (container && container.appendChild) {
         var newLine = document.createElement('div');
-        newLine.className = eventType === 'update' ? 'nmea-line json-data' : 'nmea-line';
+        newLine.className = 'nmea-line json-data';
         newLine.textContent = displayText;
         container.appendChild(newLine);
         
@@ -144,61 +142,55 @@ function processJSONData(data, eventType) {
     }
 }
 
-function setupEventListeners(eventSource) {
-    // Handle raw NMEA sentences (sent as "message" events from server)
-    eventSource.onmessage = function(event) {
-        if (!isFrozen) {
-            try {
-                // Try to parse as JSON first
-                var data = JSON.parse(event.data);
-                processJSONData(data, 'message');
-            } catch (e) {
-                // Non-JSON data - should be raw NMEA sentences
-                if (container && container.appendChild) {
-                    var newLine = document.createElement('div');
-                    newLine.className = 'nmea-line';
-                    newLine.textContent = event.data;
-                    container.appendChild(newLine);
-                    
-                    // Limit the number of lines to prevent excessive memory usage
-                    while (container.children.length > maxNmeaLines) {
-                        container.removeChild(container.firstChild);
-                    }
-                    
-                    container.scrollTop = container.scrollHeight;
-                }
-            }
-        }
-    };
-
-    // Handle parsed JSON data (sent as "update" events from server)
-    eventSource.addEventListener('update', function(e) {
-        if (!isFrozen) {
-            try {
-                var data = JSON.parse(e.data);
-                processJSONData(data, 'update');
-            } catch (e) {
-                console.error("DEBUG: Error parsing update event JSON:", e, "Data:", e.data);
-            }
-        }
-    }, false);
-
-    // Keep legacy support for heading_update events
-    eventSource.addEventListener('heading_update', function(e) {
-        console.log("DEBUG: Received heading_update event:", e.data);
-        var data = JSON.parse(e.data);
-        updateCompass(data.heading);
-    }, false);
-
-    eventSource.addEventListener('open', function(e) {
-        console.log("Events Connected");
-    }, false);
+// WebSocket functions
+function initWebSocket() {
+    console.log('Trying to open a WebSocket connection…');
     
-    eventSource.addEventListener('error', function(e) {
-        if (e.target.readyState != EventSource.OPEN) {
-            console.log("Events Disconnected");
+    // Use the hostname for the WebSocket URL if available, otherwise fall back to relative path
+    var gateway = globalHostname ? 
+        `ws://${globalHostname}/ws` : 
+        `ws://${window.location.hostname}/ws`;
+    
+    globalWebSocket = new WebSocket(gateway);
+    globalWebSocket.onopen = onOpen;
+    globalWebSocket.onclose = onClose;
+    globalWebSocket.onmessage = onMessage;
+}
+
+// When websocket is established
+function onOpen(event) {
+    console.log('WebSocket connection opened');
+}
+
+function onClose(event) {
+    console.log('WebSocket connection closed');
+    setTimeout(initWebSocket, 2000);
+}
+
+// Function that receives messages from the ESP32
+function onMessage(event) {
+    if (!isFrozen) {
+        try {
+            // Try to parse as JSON first
+            var data = JSON.parse(event.data);
+            processJSONData(data);
+        } catch (e) {
+            // Non-JSON data - should be raw NMEA sentences
+            if (container && container.appendChild) {
+                var newLine = document.createElement('div');
+                newLine.className = 'nmea-line';
+                newLine.textContent = event.data;
+                container.appendChild(newLine);
+                
+                // Limit the number of lines to prevent excessive memory usage
+                while (container.children.length > maxNmeaLines) {
+                    container.removeChild(container.firstChild);
+                }
+                
+                container.scrollTop = container.scrollHeight;
+            }
         }
-    }, false);
+    }
 }
 
 function freezeData() {
@@ -243,19 +235,9 @@ function sendCommand() {
 // Initialize everything when the DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // First get the hostname
-    getSSEHostname().then(() => {
-        // Initialize EventSource after hostname is fetched
-        if (!!window.EventSource && !globalEventSource) {
-            // Use the hostname for the EventSource URL if available, otherwise fall back to relative path
-            globalEventSource = globalHostname ?
-                new EventSource(`http://${globalHostname}/events`) :
-                new EventSource('/events');
-            
-            // Set up event listeners for the event source
-            setupEventListeners(globalEventSource);
-        }
-        
-        // All heading updates now come exclusively via SSE events
+    getWSHostname().then(() => {
+        // Initialize WebSocket after hostname is fetched
+        initWebSocket();
     });
     
     // Set up command input event listener

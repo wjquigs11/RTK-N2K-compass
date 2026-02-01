@@ -45,24 +45,36 @@ struct GNRMCData {
   char navStatus;        // Navigational status (optional)
 };
 
+struct tBoatData {
+  unsigned long DaysSince1970;   // Days since 1970-01-01
+  double TrueHeading,SOG,COG,Variation,
+         GPSTime,// Secs since midnight,
+         Latitude, Longitude, Altitude, HDOP, GeoidalSeparation, DGPSAge;
+  int GPSQualityIndicator, SatelliteCount, DGPSReferenceStationID;
+  bool MOBActivated;
+  HeadingData headingData;
+  GNRMCData gnrmcData;
+  AntennaStatus antennaStatus;
+};
+
+//extern HeadingData headingData;  // Global heading data structure
+//extern GNRMCData gnrmcData;      // Global GNRMC data structure
+extern tBoatData boatData;
+
 extern HardwareSerial UMserial;
 
 #define HTTP_PORT 80
 extern AsyncWebServer server;
-extern AsyncEventSource events;
+extern AsyncWebSocket ws;
 void startWebServer();
 extern bool serverStarted;
-//void sendNMEAtoWebClients(const char* nmeaLine);
-//char* parseUNIHEADING(const char* nmeaLine);
-//char* parsePQTMANTENNASTATUS(const char* nmeaLine);
-//char* parsePQTMTAR(const char* nmeaLine);
 extern String host;
 
-void sendNMEAtoWebClients(char* nmeaLine);
-char* parseUNIHEADING(char* nmeaLine);
-char* parsePQTMANTENNASTATUS(char* nmeaLine);
-char* parsePQTMTAR(char* nmeaLine);
-char* parseGNRMC(char* nmeaLine);
+// Forward declarations
+void setupUMsender();
+void initUMSocket();
+void notifyTCPclients(const char* data);
+void handleTCPConnections();
 
 #define RTK_PORT 4444
 extern int port; // TCP port for the server, can be modified via settings page
@@ -76,17 +88,33 @@ extern char prbuf[];
 #define MAXBUF 192  // some sentences can be long
 extern char nmeaBuffer[];
 
-extern HeadingData headingData;  // Global heading data structure
-extern GNRMCData gnrmcData;      // Global GNRMC data structure
-
 #define DEGTORAD 0.01745329252
 #define RADTODEG 57.2957795131
 
+extern bool sendNMEA;
+extern bool sendJSON;
+
 #ifdef N2K
+#include <N2kMsg.h>
+#include <NMEA2000.h>
+#include <N2kMessages.h>
+#include <NMEA2000_esp32.h>
 void setupN2K();
 void xmitHeading(float);
 #endif
 extern bool n2kSend;
+
+#ifdef N0183
+#include <NMEA0183.h>
+#include <NMEA0183Msg.h>
+#include <NMEA0183Messages.h>
+//#include "NMEA0183Handlers.h"
+//void InitNMEA0183Handlers(tNMEA2000 *_NMEA2000, tBoatData *_BoatData);
+//void DebugNMEA0183Handlers(Stream* _stream);
+//void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg);
+void setupNMEA();
+void loopNMEA();
+#endif
 
 #ifdef WEBSERIAL
 #include <WebSerialPro.h>

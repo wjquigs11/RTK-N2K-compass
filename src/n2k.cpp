@@ -1,8 +1,6 @@
 bool n2kSend = false;
 #ifdef N2K
 #include "include.h"
-#include <N2kMessages.h>
-#include <NMEA2000_esp32.h>
 
 #define CAN_RX_PIN GPIO_NUM_34
 #define CAN_TX_PIN GPIO_NUM_32

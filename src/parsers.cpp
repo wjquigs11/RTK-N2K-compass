@@ -1,9 +1,10 @@
+#ifdef OLDPARSER
 #include "include.h"
 
 // Global data structures
-HeadingData headingData = {0};
-AntennaStatus antennaStatus = {0};
-GNRMCData gnrmcData = {0};
+//HeadingData headingData = {0};
+//AntennaStatus antennaStatus = {0};
+//GNRMCData gnrmcData = {0};
 
 #ifdef UM982
 // Unicore UM982
@@ -211,3 +212,4 @@ char* parseGNRMC(char* nmeaLine) {
   
   return rmcJson;
 }
+#endif
