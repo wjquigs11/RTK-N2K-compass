@@ -55,7 +55,8 @@ void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg) {
   }
 }
 
-void HandleRMC(const tNMEA0183Msg &NMEA0183Msg) {  
+void HandleRMC(const tNMEA0183Msg &NMEA0183Msg) {
+  static char rmcJson[MAXBUF]; // Static buffer to hold the JSON string
   double gpsTime;
   char status;
   double courseDouble;
@@ -71,7 +72,26 @@ void HandleRMC(const tNMEA0183Msg &NMEA0183Msg) {
       boatData.gnrmcData.speedKnots = (float)speedDouble;
       boatData.gnrmcData.magVar = (float)fabs(variation);
       boatData.gnrmcData.magVarDir = (variation >= 0) ? 'E' : 'W';
+      boatData.gnrmcData.status = status;
+      
+      // Format navigation data update for web clients
+      snprintf(rmcJson, sizeof(rmcJson),
+              "{\"gnrmc\":{\"utc\":\"%s\",\"status\":\"%c\",\"lat\":%.6f,\"lon\":%.6f,\"speed\":%.3f,"
+              "\"course\":%.2f,\"date\":\"%s\"}}",
+              boatData.gnrmcData.utcTime,
+              boatData.gnrmcData.status,
+              boatData.gnrmcData.latitude,
+              boatData.gnrmcData.longitude,
+              boatData.gnrmcData.speedKnots,
+              boatData.gnrmcData.course,
+              boatData.gnrmcData.date);
+      
       Serial.printf("lat: %2.4f lon: %2.4f date: %s\n", boatData.gnrmcData.latitude, boatData.gnrmcData.longitude, boatData.gnrmcData.date);
+      
+      // Send JSON via WebSocket if server is started and JSON sending is enabled
+      if (serverStarted && sendJSON) {
+        ws.textAll(rmcJson);
+      }
     } else Serial.println("Failed to parse RMC or invalid data");
 }
 
@@ -92,6 +112,7 @@ bool NMEA0183ParsePQTMANTENNASTATUS_nc(const tNMEA0183Msg &NMEA0183Msg, int &Msg
 }
 
 void HandlePQTMANTENNASTATUS(const tNMEA0183Msg &NMEA0183Msg) {
+  static char statusJson[MAXBUF]; // Static buffer to hold the JSON string
   int msgVer, antAStatus, antBStatus;
   
   if (NMEA0183ParsePQTMANTENNASTATUS_nc(NMEA0183Msg, msgVer, antAStatus, antBStatus)) {
@@ -100,8 +121,18 @@ void HandlePQTMANTENNASTATUS(const tNMEA0183Msg &NMEA0183Msg) {
     boatData.antennaStatus.antAStatus = antAStatus;
     boatData.antennaStatus.antBStatus = antBStatus;
     
+    // Format antenna status update for web clients
+    snprintf(statusJson, sizeof(statusJson),
+             "{\"antennaStatus\":{\"primary\":%d,\"secondary\":%d}}",
+             antAStatus, antBStatus);
+    
     Serial.printf("PQTMANTENNASTATUS: MsgVer=%d, AntA=%d, AntB=%d\n",
                   msgVer, antAStatus, antBStatus);
+                  
+    // Send JSON via WebSocket if server is started and JSON sending is enabled
+    if (serverStarted && sendJSON) {
+      ws.textAll(statusJson);
+    }
   } else {
     Serial.println("Failed to parse PQTMANTENNASTATUS");
   }
@@ -134,6 +165,7 @@ bool NMEA0183ParsePQTMTAR_nc(const tNMEA0183Msg &NMEA0183Msg, int &MsgVer, char 
 }
 
 void HandlePQTMTAR(const tNMEA0183Msg &NMEA0183Msg) {
+  static char mtarJson[MAXBUF]; // Static buffer to hold the JSON string
   int msgVer, quality, usedSV;
   char utcTime[16];
   float length, pitch, roll, heading, accPitch, accRoll, accHeading;
@@ -153,8 +185,21 @@ void HandlePQTMTAR(const tNMEA0183Msg &NMEA0183Msg) {
     boatData.headingData.accHeading = accHeading;
     boatData.headingData.usedSV = usedSV;
     
+    // Format heading/TAR data update for web clients
+    snprintf(mtarJson, sizeof(mtarJson),
+             "{\"heading\":%.3f,\"pitch\":%.6f,\"roll\":%.6f,\"quality\":%d,\"utc\":\"%s\",\"length\":%.3f,"
+             "\"accPitch\":%.6f,\"accRoll\":%.6f,\"accHeading\":%.1f,\"usedSV\":%d}",
+             boatData.headingData.heading, pitch, roll, quality,
+             utcTime, length, accPitch, accRoll,
+             accHeading, usedSV);
+    
     Serial.printf("PQTMTAR: Heading=%.3f, Pitch=%.6f, Roll=%.6f, Quality=%d, UTC=%s\n",
                   boatData.headingData.heading, pitch, roll, quality, utcTime);
+                  
+    // Send JSON via WebSocket if server is started and JSON sending is enabled
+    if (serverStarted && sendJSON) {
+      ws.textAll(mtarJson);
+    }
   } else {
     Serial.println("Failed to parse PQTMTAR");
   }
