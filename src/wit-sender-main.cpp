@@ -69,7 +69,7 @@ unsigned long now;
 // Global heading data structure is defined in parsers.cpp
 //extern HeadingData headingData;
 
-bool debugRTK = true; // echo RTK to serial
+//bool debugRTK = true; // echo RTK to serial
 bool otaInProgress = false;  // Flag to indicate OTA update is in progress
 #define MAX_NMEA 256
 
@@ -90,7 +90,6 @@ int nmeaBufferIndex = 0;
 bool inSentence = false;
 
 bool sendNMEA = true; // send NMEA to web/TCP clients?
-bool sendJSON = false;  // send JSON-parsed data to web/TCP clients?
 
 void setup() {
   Serial.begin(115200); delay(333);
@@ -255,7 +254,7 @@ void notifyTCPclients(const char* data) {
   // Send data to all connected clients
   for (auto& client : tcpClients) {
     if (client.connected()) {
-      client.print(data);
+      client.println(data);
       client.flush(); // no buffering
     }
   }
@@ -268,6 +267,10 @@ void handleTCPConnections() {
       tcpClients.push_back(newClient);
       Serial.println("New TCP client connected from " + newClient.remoteIP().toString() + ":" + String(newClient.remotePort()));
       Serial.println("Total connected clients: " + String(tcpClients.size()));
+#ifdef WEBSERIAL
+      WebSerial.println("New TCP client connected from " + newClient.remoteIP().toString() + ":" + String(newClient.remotePort()));
+      WebSerial.println("Total connected clients: " + String(tcpClients.size()));
+#endif
     } else {
       Serial.println("Maximum clients reached, rejecting connection");
       newClient.stop();
@@ -304,6 +307,7 @@ void loop() {
   }
   // Handle UM serial communication and TCP clients only if OTA is not in progress and not in doubleReset mode
   if (!otaInProgress && !doubleReset) {
+    handleTCPConnections();
 #ifdef N0183
     loopNMEA();
 #endif

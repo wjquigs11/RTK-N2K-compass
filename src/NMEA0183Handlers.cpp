@@ -52,6 +52,10 @@ void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg) {
   if (serverStarted && sendNMEA) {
     if (NMEA0183Msg.GetMessage(completeMessage, sizeof(completeMessage))) {
       Serial.println(completeMessage);
+#ifdef WEBSERIAL
+      WebSerial.println(completeMessage);
+#endif
+      notifyTCPclients(completeMessage);
       events.send(completeMessage, "message", millis()); // Send raw NMEA message via SSE
     }
   }
