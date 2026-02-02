@@ -65,7 +65,7 @@ extern HardwareSerial UMserial;
 
 #define HTTP_PORT 80
 extern AsyncWebServer server;
-extern AsyncWebSocket ws;
+extern AsyncEventSource events;
 void startWebServer();
 extern bool serverStarted;
 extern String host;

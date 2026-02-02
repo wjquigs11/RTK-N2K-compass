@@ -15,6 +15,7 @@ struct tNMEA0183Handler {
 void HandleRMC(const tNMEA0183Msg &NMEA0183Msg);
 void HandleGGA(const tNMEA0183Msg &NMEA0183Msg) {}
 void HandleHDT(const tNMEA0183Msg &NMEA0183Msg) {}
+void HandleUNIHEADINGA(const tNMEA0183Msg &NMEA0183Msg);
 void HandlePQTMANTENNASTATUS(const tNMEA0183Msg &NMEA0183Msg);
 void HandlePQTMTAR(const tNMEA0183Msg &NMEA0183Msg);
 void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg);
@@ -23,6 +24,7 @@ tNMEA0183Handler NMEA0183Handlers[]={
   {"GGA",&HandleGGA},
   {"HDT",&HandleHDT},
   {"RMC",&HandleRMC},
+  {"UNIHEADINGA",&HandleUNIHEADINGA},
   {"PQTMANTENNASTATUS",&HandlePQTMANTENNASTATUS},
   {"PQTMTAR",&HandlePQTMTAR},
   {0,0}
@@ -50,7 +52,7 @@ void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg) {
   if (serverStarted && sendNMEA) {
     if (NMEA0183Msg.GetMessage(completeMessage, sizeof(completeMessage))) {
       Serial.println(completeMessage);
-      ws.textAll(completeMessage); // Send raw NMEA message via WebSocket  
+      events.send(completeMessage, "message", millis()); // Send raw NMEA message via SSE
     }
   }
 }
@@ -166,4 +168,133 @@ void HandlePQTMTAR(const tNMEA0183Msg &NMEA0183Msg) {
     Serial.println("Failed to parse PQTMTAR");
   }
 }
+
+// Parse UNIHEADINGA message to extract heading and related information
+// Real-world format: #UNIHEADINGA,<port>,<sequence>,<idle_time>,<time_status>,<week>,<seconds>,<receiver_status>,<reserved>,<receiver_sw_version>;<solStat>,<posType>,<length>,<heading>,<pitch>,<reserved>,<hdgstddev>,<ptchstddev>,<stn_id>,<#SVs>,<#solnSVs>,<#obs>,<#multi>,<reserved>,<ext_sol_stat>,<galileo_bds3_sig_mask>,<gps_glonass_bds2_sig_mask>*<checksum>
+// Example: #UNIHEADINGA,97,GPS,FINE,2190,365174000,0,0,18,12;INSUFFICIENT_OBS,NONE,0.000 0,0.0000,0.0000,0.0000,0.0000,0.0000,"",0,0,0,0,0,00,0,0*ee072604
+bool NMEA0183ParseUNIHEADINGA_nc(const tNMEA0183Msg &NMEA0183Msg, char *solStatStr, char *posTypeStr, float &length, float &heading, float &pitch, float &hdgStdDev, float &ptchStdDev, char *stnIdStr, int &numSVs, int &numSolnSVs, int &numObs, int &numMulti, int &extSolStat) {
+  char completeMessage[MAX_NMEA0183_MSG_LEN];
+  
+  // Get the complete message
+  if (!NMEA0183Msg.GetMessage(completeMessage, sizeof(completeMessage))) {
+    return false;
+  }
+  
+  // Find the semicolon separator
+  char* semicolonPos = strchr(completeMessage, ';');
+  if (semicolonPos == NULL) {
+    return false;
+  }
+  
+  // Move past the semicolon
+  semicolonPos++;
+  
+  // Parse the fields after semicolon - handle both text and numeric values
+  char* token = strtok(semicolonPos, ",");
+  int fieldIndex = 0;
+  
+  while (token != NULL && fieldIndex < 17) {
+    // Remove checksum if present (for last field)
+    char* checksumPos = strchr(token, '*');
+    if (checksumPos != NULL) {
+      *checksumPos = '\0';
+    }
+    
+    // Remove quotes if present
+    if (token[0] == '"' && token[strlen(token)-1] == '"') {
+      token[strlen(token)-1] = '\0';
+      token++;
+    }
+    
+    switch (fieldIndex) {
+      case 0: // Solution status - can be text like "INSUFFICIENT_OBS"
+        strncpy(solStatStr, token, 31);
+        solStatStr[31] = '\0';
+        break;
+      case 1: // Position type - can be text like "NONE"
+        strncpy(posTypeStr, token, 31);
+        posTypeStr[31] = '\0';
+        break;
+      case 2: // Baseline length - handle malformed "0.000 0"
+        {
+          char* spacePos = strchr(token, ' ');
+          if (spacePos) *spacePos = '\0'; // Truncate at space
+          length = atof(token);
+        }
+        break;
+      case 3: heading = atof(token); break;           // Heading (0 to 360.0 degrees)
+      case 4: pitch = atof(token); break;             // Pitch (± 90 degrees)
+      case 5: /* reserved */ break;                   // Reserved field
+      case 6: hdgStdDev = atof(token); break;         // Standard deviation of heading
+      case 7: ptchStdDev = atof(token); break;        // Standard deviation of pitch
+      case 8: // Base station ID - can be quoted empty string
+        strncpy(stnIdStr, token, 31);
+        stnIdStr[31] = '\0';
+        break;
+      case 9: numSVs = atoi(token); break;            // Number of satellites tracked
+      case 10: numSolnSVs = atoi(token); break;       // Number of satellites used in solution
+      case 11: numObs = atoi(token); break;           // Number of satellites above elevation mask
+      case 12: numMulti = atoi(token); break;         // Number of satellites with L2 signal
+      case 13: /* reserved */ break;                  // Reserved field
+      case 14: extSolStat = atoi(token); break;       // Extended solution status
+      case 15: /* galileo_bds3_sig_mask */ break;     // Galileo and BDS-3 signal mask
+      case 16: /* gps_glonass_bds2_sig_mask */ break; // GPS, GLONASS and BDS-2 signal mask
+    }
+    
+    token = strtok(NULL, ",");
+    fieldIndex++;
+  }
+  
+  // Check if we parsed at least the essential fields (solStat, posType, length, heading, pitch)
+  return (fieldIndex >= 5);
+}
+
+void HandleUNIHEADINGA(const tNMEA0183Msg &NMEA0183Msg) {
+  char solStatStr[32], posTypeStr[32], stnIdStr[32];
+  int numSVs, numSolnSVs, numObs, numMulti, extSolStat;
+  float length, heading, pitch, hdgStdDev, ptchStdDev;
+  
+  // Initialize string buffers
+  solStatStr[0] = '\0';
+  posTypeStr[0] = '\0';
+  stnIdStr[0] = '\0';
+  
+  if (NMEA0183ParseUNIHEADINGA_nc(NMEA0183Msg, solStatStr, posTypeStr, length, heading, pitch, hdgStdDev, ptchStdDev, stnIdStr, numSVs, numSolnSVs, numObs, numMulti, extSolStat)) {
+    // Update the boat data with the parsed values
+    boatData.headingData.heading = heading + boatData.headingData.RTKorientation; // Apply orientation adjustment
+    boatData.headingData.pitch = pitch;
+    boatData.headingData.length = length;
+    
+    // Map solution status text to numeric quality
+    int quality = 0;
+    if (strcmp(solStatStr, "SOL_COMPUTED") == 0) quality = 4;
+    else if (strcmp(solStatStr, "INSUFFICIENT_OBS") == 0) quality = 0;
+    else if (strcmp(solStatStr, "NO_CONVERGENCE") == 0) quality = 1;
+    else if (strcmp(solStatStr, "SINGULARITY") == 0) quality = 1;
+    else if (strcmp(solStatStr, "COV_TRACE") == 0) quality = 2;
+    else if (strcmp(solStatStr, "TEST_DIST") == 0) quality = 3;
+    else if (strcmp(solStatStr, "COLD_START") == 0) quality = 1;
+    else if (strcmp(solStatStr, "V_H_LIMIT") == 0) quality = 2;
+    else if (strcmp(solStatStr, "VARIANCE") == 0) quality = 2;
+    else if (strcmp(solStatStr, "RESIDUALS") == 0) quality = 3;
+    else if (strcmp(solStatStr, "DELTA_POS") == 0) quality = 3;
+    else if (strcmp(solStatStr, "NEGATIVE_VAR") == 0) quality = 1;
+    else if (strcmp(solStatStr, "INTEGRITY_WARNING") == 0) quality = 5;
+    else if (strcmp(solStatStr, "INS_INACTIVE") == 0) quality = 6;
+    else if (strcmp(solStatStr, "INS_ALIGNING") == 0) quality = 6;
+    else if (strcmp(solStatStr, "INS_BAD") == 0) quality = 1;
+    else if (strcmp(solStatStr, "IMU_UNPLUGGED") == 0) quality = 0;
+    
+    boatData.headingData.quality = quality;
+    boatData.headingData.usedSV = numSolnSVs; // Number of satellites used in solution
+    boatData.headingData.accHeading = hdgStdDev; // Standard deviation as accuracy
+    boatData.headingData.accPitch = ptchStdDev;
+    
+    Serial.printf("UNIHEADINGA: Heading=%.4f° (adj=%.4f°), Pitch=%.4f°, Length=%.3fm, SolStat=%s, PosTy=%s, SVs=%d/%d, Stn=%s\n",
+                  heading, boatData.headingData.heading, pitch, length, solStatStr, posTypeStr, numSolnSVs, numSVs, stnIdStr);
+  } else {
+    Serial.println("Failed to parse UNIHEADINGA");
+  }
+}
+
 #endif

@@ -1,6 +1,5 @@
-// Combined WebSocket and Compass functionality
-// Global variables
-let globalWebSocket = null;
+// Combined SSE and Compass functionality
+let globalEventSource = null;
 let globalHostname = null;
 var container = document.getElementById('nmea-container');
 var isFrozen = false;
@@ -8,7 +7,7 @@ var isFrozen = false;
 var maxNmeaLines = 40;
 
 // Function to get the hostname from /host endpoint
-function getWSHostname() {
+function getSSEHostname() {
     return fetch('/host')
         .then(response => response.text())
         .then(hostname => {
@@ -36,26 +35,31 @@ function updateCompass(heading) {
     
     // Update the heading display if it exists
     if (headingDisplay) {
-        headingDisplay.innerHTML = Math.round(heading);
+        headingDisplay.innerHTML = heading.toFixed(2);
+    }
+}
+
+// Generic function to map quality value to text (fallback)
+function getQualityText(quality) {
+    if (quality === undefined) return "";
+    
+    switch(quality) {
+        case 0: return "0/No Fix";
+        case 1: return "1/Single";
+        case 2: return "2/DGPS";
+        case 4: return "4/RTK Fixed";
+        case 5: return "5/RTK Float";
+        case 6: return "6/Estimated";
+        default: return "Unknown";
     }
 }
 
 // Shared function to update status elements based on data
-function updateStatusElements(data) {
-    // Map quality value to text
-    var qualityText = "";
-    if (data.quality !== undefined) {
-        switch(data.quality) {
-            case 0: qualityText = "0/No Fix"; break;
-            case 1: qualityText = "1/Single"; break;
-            case 2: qualityText = "2/DGPS"; break;
-            case 4: qualityText = "4/RTK Fixed"; break;
-            case 5: qualityText = "5/RTK Float"; break;
-            case 6: qualityText = "6/Estimated"; break;
-            default: qualityText = "Unknown";
-        }
-    }
-    
+function updateStatusElements(data, qualityFunction = getQualityText) {
+    // Map quality value to text using the specified function
+    // If quality is already a string (like solStatStr from UNIHEADINGA), use it directly
+    var qualityText = typeof data.quality === 'string' ? data.quality : qualityFunction(data.quality);
+    if (typeof data.quality === 'string') console.log("DEBUG: data.quality string:", data.quality);
     // Map antenna status values to text
     function getAntennaStatusText(status) {
         switch(status) {
@@ -101,10 +105,10 @@ function updateStatusElements(data) {
         console.log("Roll element updated to:", rollElement.textContent);
     }
     if (latValueElement && data.latitude !== undefined) {
-        latValueElement.textContent = data.latitude;
+        latValueElement.textContent = formatDMS(data.latitude, true);
     }
     if (lonValueElement && data.longitude !== undefined) {
-        lonValueElement.textContent = data.longitude;
+        lonValueElement.textContent = formatDMS(data.longitude, false);
     }
     if (primaryAntennaElement && data.primaryAntenna !== undefined) {
         primaryAntennaElement.textContent = getAntennaStatusText(data.primaryAntenna);
@@ -114,12 +118,31 @@ function updateStatusElements(data) {
     }
 }
 
+// Function to convert decimal degrees to degrees, minutes, seconds format
+function formatDMS(decimalDegrees, isLatitude = true) {
+    if (decimalDegrees === undefined || decimalDegrees === null) return '-';
+    
+    var degrees = Math.floor(Math.abs(decimalDegrees));
+    var minutes = Math.floor((Math.abs(decimalDegrees) - degrees) * 60);
+    var seconds = ((Math.abs(decimalDegrees) - degrees) * 60 - minutes) * 60;
+    
+    // Determine direction
+    var direction;
+    if (isLatitude) {
+        direction = decimalDegrees >= 0 ? 'N' : 'S';
+    } else {
+        direction = decimalDegrees >= 0 ? 'E' : 'W';
+    }
+    
+    return `${degrees}°${minutes.toString().padStart(2, '0')}'${seconds.toFixed(4).padStart(7, '0')}"${direction}`;
+}
+
 // Function to parse NMEA0183 checksum
 function validateNMEAChecksum(sentence) {
     if (!sentence.includes('*')) return false;
     
     var parts = sentence.split('*');
-    var data = parts[0].substring(1); // Remove the $ at the beginning
+    var data = parts[0].substring(1); // Remove the $ or # at the beginning
     var providedChecksum = parts[1];
     
     var calculatedChecksum = 0;
@@ -237,7 +260,7 @@ function parseGNGGA(sentence) {
         utc: fields[1],
         latitude: lat,
         longitude: lon,
-        quality: quality,
+        //quality: quality,
         numSV: parseInt(fields[7]),
         hdop: parseFloat(fields[8]),
         altitude: parseFloat(fields[9]),
@@ -268,21 +291,33 @@ function parsePQTMANTENNASTATUS(sentence) {
 // Real-world format: #UNIHEADINGA,<port>,<sequence>,<idle_time>,<time_status>,<week>,<seconds>,<receiver_status>,<reserved>,<receiver_sw_version>;<solStat>,<posType>,<length>,<heading>,<pitch>,<reserved>,<hdgstddev>,<ptchstddev>,<stn_id>,<#SVs>,<#solnSVs>,<#obs>,<#multi>,<reserved>,<ext_sol_stat>,<galileo_bds3_sig_mask>,<gps_glonass_bds2_sig_mask>*<checksum>
 // Example: #UNIHEADINGA,97,GPS,FINE,2190,365174000,0,0,18,12;INSUFFICIENT_OBS,NONE,0.000 0,0.0000,0.0000,0.0000,0.0000,0.0000,"",0,0,0,0,0,00,0,0*ee072604
 function parseUNIHEADINGA(sentence) {
-    if (!validateNMEAChecksum(sentence)) return null;
+    console.log("DEBUG parseUNIHEADINGA: sentence =", sentence);
     
+    // Skip checksum validation for UNIHEADINGA sentences
+    console.log("DEBUG: skipping checksum validation for UNIHEADINGA");
     // Find the semicolon separator
     var semicolonPos = sentence.indexOf(';');
+    console.log("DEBUG parseUNIHEADINGA: semicolon position =", semicolonPos);
     if (semicolonPos === -1) return null;
     
     // Get the part after semicolon and before checksum
     var afterSemicolon = sentence.substring(semicolonPos + 1);
+    console.log("DEBUG parseUNIHEADINGA: after semicolon =", afterSemicolon);
+    
     var checksumPos = afterSemicolon.indexOf('*');
+    console.log("DEBUG parseUNIHEADINGA: checksum position in afterSemicolon =", checksumPos);
     if (checksumPos !== -1) {
         afterSemicolon = afterSemicolon.substring(0, checksumPos);
+        console.log("DEBUG parseUNIHEADINGA: after removing checksum =", afterSemicolon);
     }
     
     var fields = afterSemicolon.split(',');
-    if (fields.length < 5) return null; // Need at least solStat, posType, length, heading, pitch
+    console.log("DEBUG parseUNIHEADINGA: fields =", fields);
+    console.log("DEBUG parseUNIHEADINGA: fields.length =", fields.length);
+    if (fields.length < 5) {
+        console.log("DEBUG parseUNIHEADINGA: not enough fields, returning null");
+        return null; // Need at least solStat, posType, length, heading, pitch
+    }
     
     // Helper function to clean field values (remove quotes, handle malformed data)
     function cleanField(field) {
@@ -305,34 +340,9 @@ function parseUNIHEADINGA(sentence) {
         return parseFloat(cleaned) || 0.0;
     }
     
-    // Helper function to map solution status text to numeric quality
-    function mapSolutionStatus(solStatStr) {
-        switch (solStatStr) {
-            case 'SOL_COMPUTED': return 4;
-            case 'INSUFFICIENT_OBS': return 0;
-            case 'NO_CONVERGENCE': return 1;
-            case 'SINGULARITY': return 1;
-            case 'COV_TRACE': return 2;
-            case 'TEST_DIST': return 3;
-            case 'COLD_START': return 1;
-            case 'V_H_LIMIT': return 2;
-            case 'VARIANCE': return 2;
-            case 'RESIDUALS': return 3;
-            case 'DELTA_POS': return 3;
-            case 'NEGATIVE_VAR': return 1;
-            case 'INTEGRITY_WARNING': return 5;
-            case 'INS_INACTIVE': return 6;
-            case 'INS_ALIGNING': return 6;
-            case 'INS_BAD': return 1;
-            case 'IMU_UNPLUGGED': return 0;
-            default: return parseInt(solStatStr) || 0;
-        }
-    }
-    
     var result = {
         solStatStr: cleanField(fields[0]) || '',                    // Solution status as string
         posTypeStr: cleanField(fields[1]) || '',                    // Position type as string
-        solStat: mapSolutionStatus(cleanField(fields[0])),          // Solution status mapped to numeric
         posType: parseInt(cleanField(fields[1])) || 0,              // Position type (fallback to numeric)
         length: parseLength(fields[2]),                             // Baseline length (handle malformed)
         heading: parseFloat(fields[3]) || 0.0,                      // Heading (0 to 360.0 degrees)
@@ -352,6 +362,7 @@ function parseUNIHEADINGA(sentence) {
     if (fields.length > 12) result.numMulti = parseInt(fields[12]) || 0;         // Number of satellites with L2 signal
     if (fields.length > 14) result.extSolStat = parseInt(fields[14]) || 0;       // Extended solution status
     
+    console.log("DEBUG parseUNIHEADINGA: final result =", result);
     return result;
 }
 
@@ -405,7 +416,7 @@ function processNMEAData(sentence) {
                 utc: data.utc,
                 length: data.length,
                 usedSV: data.usedSV
-            });
+            }, getQualityText);
         }
     } else if (sentence.startsWith('$GNRMC,')) {
         data = parseGNRMC(sentence);
@@ -491,7 +502,7 @@ function processNMEAData(sentence) {
                 heading: data.heading,
                 pitch: data.pitch,
                 length: data.length,
-                quality: data.solStat, // Use numeric quality for status mapping
+                quality: data.solStatStr + '|' + data.posTypeStr, // Concatenate solution status and position type
                 usedSV: data.numSolnSVs || data.posType, // Use numSolnSVs if available, fallback to posType
                 hdgAccuracy: data.hdgStdDev,
                 ptchAccuracy: data.ptchStdDev,
@@ -530,91 +541,60 @@ function processNMEAData(sentence) {
         }
     }
     
-    // Add to display container only if not frozen
-    if (!isFrozen && container && container.appendChild) {
-        var newLine = document.createElement('div');
-        newLine.className = 'nmea-line nmea-data';
-        newLine.textContent = displayText;
-        container.appendChild(newLine);
-        
-        // Limit the number of lines to prevent excessive memory usage
-        while (container.children.length > maxNmeaLines) {
-            container.removeChild(container.firstChild);
+    // Add to display container (freeze only affects scrolling window, not parsing)
+    if (container && container.appendChild) {
+        if (!isFrozen) {
+            var newLine = document.createElement('div');
+            newLine.className = 'nmea-line nmea-data';
+            newLine.textContent = displayText;
+            container.appendChild(newLine);
+            
+            // Limit the number of lines to prevent excessive memory usage
+            while (container.children.length > maxNmeaLines) {
+                container.removeChild(container.firstChild);
+            }
+            
+            container.scrollTop = container.scrollHeight;
         }
-        
-        container.scrollTop = container.scrollHeight;
     }
 }
 
-// WebSocket functions
-function initWebSocket() {
-    console.log('Trying to open a WebSocket connection…');
-    
-    // Use the hostname for the WebSocket URL if available, otherwise fall back to relative path
-    var gateway = globalHostname ? 
-        `ws://${globalHostname}/ws` : 
-        `ws://${window.location.hostname}/ws`;
-    
-    globalWebSocket = new WebSocket(gateway);
-    globalWebSocket.onopen = onOpen;
-    globalWebSocket.onclose = onClose;
-    globalWebSocket.onmessage = onMessage;
-}
+function setupEventListeners(eventSource) {
+    // Handle raw NMEA sentences (sent as "message" events from server)
+    eventSource.onmessage = function(event) {
+        // Always process NMEA data (freeze only affects scrolling window)
+        processNMEAData(event.data);
+    };
 
-// When websocket is established
-function onOpen(event) {
-    console.log('WebSocket connection opened');
-}
-
-function onClose(event) {
-    console.log('WebSocket connection closed');
-    setTimeout(initWebSocket, 2000);
-}
-
-// Function that receives messages from the ESP32
-function onMessage(event) {
-    var message = event.data.trim();
-    
-    // Check if it's a valid NMEA sentence (starts with $ and contains *)
-    if (message.startsWith('$') && message.includes('*')) {
-        // Process as NMEA0183 sentence
-        processNMEAData(message);
-    } else {
-        // Try to parse as JSON for backward compatibility
+    // Handle parsed JSON data (sent as "update" events from server)
+    eventSource.addEventListener('update', function(e) {
+        // Always process update events (freeze only affects scrolling window)
         try {
-            var data = JSON.parse(message);
-            // For backward compatibility, convert JSON back to display format
-            var displayText = JSON.stringify(data);
-            if (!isFrozen && container && container.appendChild) {
-                var newLine = document.createElement('div');
-                newLine.className = 'nmea-line json-fallback';
-                newLine.textContent = displayText;
-                container.appendChild(newLine);
-                
-                // Limit the number of lines to prevent excessive memory usage
-                while (container.children.length > maxNmeaLines) {
-                    container.removeChild(container.firstChild);
-                }
-                
-                container.scrollTop = container.scrollHeight;
+            var data = JSON.parse(e.data);
+            console.log(`DEBUG: Processing JSON data from update event:`, data);
+            
+            // Update compass with heading data
+            if (data.heading !== undefined) {
+                updateCompass(data.heading);
             }
+            
+            // Update status elements
+            updateStatusElements(data);
+            
         } catch (e) {
-            // Neither NMEA nor JSON - display as raw text
-            if (!isFrozen && container && container.appendChild) {
-                var newLine = document.createElement('div');
-                newLine.className = 'nmea-line raw-data';
-                newLine.textContent = message;
-                container.appendChild(newLine);
-                
-                // Limit the number of lines to prevent excessive memory usage
-                while (container.children.length > maxNmeaLines) {
-                    container.removeChild(container.firstChild);
-                }
-                
-                container.scrollTop = container.scrollHeight;
-            }
+            console.error("DEBUG: Error parsing update event JSON:", e, "Data:", e.data);
         }
-    }
+    }, false);
+
+    eventSource.addEventListener('open', function(e) {
+        console.log("SSE Events Connected");
+    }, false);
+    
+    eventSource.addEventListener('error', function(e) {
+        if (e.target.readyState != EventSource.OPEN) {
+            console.log("SSE Events Disconnected");
+        }
+    }, false);
 }
 
 function freezeData() {
@@ -657,11 +637,23 @@ function sendCommand() {
 }
 
 // Initialize everything when the DOM is loaded
+// This function gives us the option of creating a 'host' file in the /data directory
+// When the page loads, it will fetch /data/host
+// cd data; python3 -m http.server 8000 
+// can browse to localhost:8000 and view the html pages, but the event source will be e.g. um982 (esp32) from 'host' file
 document.addEventListener('DOMContentLoaded', function() {
     // First get the hostname
-    getWSHostname().then(() => {
-        // Initialize WebSocket after hostname is fetched
-        initWebSocket();
+    getSSEHostname().then(() => {
+        // Initialize EventSource after hostname is fetched
+        if (!!window.EventSource && !globalEventSource) {
+            // Use the hostname for the EventSource URL if available, otherwise fall back to relative path
+            globalEventSource = globalHostname ?
+                new EventSource(`http://${globalHostname}/events`) :
+                new EventSource('/events');
+            
+            // Set up event listeners for the event source
+            setupEventListeners(globalEventSource);
+        }
     });
     
     // Set up command input event listener

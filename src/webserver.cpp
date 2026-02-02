@@ -1,7 +1,7 @@
 #include "include.h"
 
 AsyncWebServer server(HTTP_PORT);
-AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
 
 bool serverStarted;
 
@@ -128,24 +128,17 @@ void startWebServer() {
     request->send(200, "text/plain", host);
   });
 
-  // WebSocket event handlers
-  ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-    switch (type) {
-      case WS_EVT_CONNECT:
-        Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-        break;
-      case WS_EVT_DISCONNECT:
-        Serial.printf("WebSocket client #%u disconnected\n", client->id());
-        break;
-      case WS_EVT_DATA:
-        // Handle incoming WebSocket messages if needed
-        break;
-      case WS_EVT_PONG:
-      case WS_EVT_ERROR:
-        break;
+  // Set headers for SSE
+  DefaultHeaders::Instance().addHeader("Cache-Control", "no-cache");
+  DefaultHeaders::Instance().addHeader("Connection", "keep-alive");
+  
+  events.onConnect([](AsyncEventSourceClient *client){
+    if(client->lastId()){
+      Serial.printf("SSE client reconnected! Last message ID that it got is: %u\n", client->lastId());
     }
+    client->send("hello!", NULL, millis(), 1000);
   });
-  server.addHandler(&ws);
+  server.addHandler(&events);
   
   server.begin();
   Serial.println("Web server started on port " + String(HTTP_PORT));

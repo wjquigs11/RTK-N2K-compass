@@ -35,11 +35,10 @@ const char* startupRTKcommands[] = {
   "GPGSVH 10",
   "UNIHEADINGA 10",
   "GNGGA 10",
-  "GPHPR 10",
+  //"GPHPR 10",
   "GPTHS 0.5",
-  //"GPTHS 10",
   "MODE",
-  //"SAVECONFIG",
+  "SAVECONFIG",
   ""
 };
 #endif
@@ -337,6 +336,5 @@ void loop() {
 #ifdef ELEGANTOTA
   ElegantOTA.loop();
 #endif
-  // Clean up WebSocket clients
-  ws.cleanupClients();
+  // SSE connections are managed automatically by AsyncEventSource
 }

@@ -331,3 +331,76 @@ input:checked + .slider {
 input:checked + .slider:before {
     transform: translateX(13px);
 }
+
+/* Chart container styles */
+.chart-container {
+    margin: 2em 0;
+    padding: 1em;
+    border: 1px solid #ccc;
+    background: #f9f9f9;
+    border-radius: 0.3em;
+    width: 100%;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1em;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+
+.chart-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.toggle-chart-btn, .clear-chart-btn {
+    padding: 0.4em 0.8em;
+    background: #2196F3;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-radius: 0.3em;
+    min-width: 5em;
+}
+
+.clear-chart-btn {
+    background: #ff9800;
+}
+
+.toggle-chart-btn:hover, .clear-chart-btn:hover {
+    opacity: 0.8;
+}
+
+#headingQualityChart {
+    width: 100% !important;
+    height: 300px !important;
+    background: white;
+    border-radius: 0.2em;
+}
+
+@media (max-width: 768px) {
+    .chart-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .toggle-chart-btn, .clear-chart-btn {
+        width: 100%;
+        margin: 0.2em 0;
+    }
+    
+    #headingQualityChart {
+        height: 250px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    #headingQualityChart {
+        height: 200px !important;
+    }
+}

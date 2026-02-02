@@ -5,10 +5,19 @@
     <meta charset="UTF-8">
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div id="nmea-container">
         <div class="nmea-line">Waiting for data...</div>
+    </div>
+    
+    <div id="chart-container" class="chart-container">
+        <div class="chart-header">
+            <button id="toggle-chart-btn" class="toggle-chart-btn" onclick="toggleChart()">Hide Chart</button>
+            <button id="clear-chart-btn" class="clear-chart-btn" onclick="clearChartData()">Clear Data</button>
+        </div>
+        <canvas id="headingQualityChart" width="400" height="200"></canvas>
     </div>
     
     <div class="status-container">
@@ -48,6 +57,14 @@
             <label>Lon:</label>
             <span id="longitude-value">-</span>
         </div>
+        <div class="status-field">
+            <label>Pitch:</label>
+            <span id="pitch-value">-</span>°
+        </div>
+        <div class="status-field">
+            <label>Roll:</label>
+            <span id="roll-value">-</span>°
+        </div>
     </div>
     <div class="controls-container">
         <div class="button-group">
@@ -55,10 +72,11 @@
             <button id="resume-btn" class="resume-btn" onclick="resumeData()" disabled>Resume</button>
             <button id="settings-btn" class="settings-btn" onclick="window.location.href='/settings.html'">Settings</button>
         </div>
-        <label for="command-input" class="command-label">Send Command to UM-982:</label>
+        <label for="command-input" class="command-label">Send Command to RTK sensor:</label>
         <input type="text" id="command-input" class="command-input" placeholder="Enter command...">
         <button class="send-btn" onclick="sendCommand()">Send</button>
     </div>
-    <script src="/ws.js"></script>
+    <script src="/sse.js"></script>
+    <script src="/chart.js"></script>
 </body>
 </html>
