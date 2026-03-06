@@ -15,6 +15,8 @@ struct tNMEA0183Handler {
 void HandleRMC(const tNMEA0183Msg &NMEA0183Msg);
 void HandleGGA(const tNMEA0183Msg &NMEA0183Msg) {}
 void HandleHDT(const tNMEA0183Msg &NMEA0183Msg) {}
+void HandleTHS(const tNMEA0183Msg &NMEA0183Msg);
+void HandleHPR(const tNMEA0183Msg &NMEA0183Msg);
 void HandleUNIHEADINGA(const tNMEA0183Msg &NMEA0183Msg);
 void HandlePQTMANTENNASTATUS(const tNMEA0183Msg &NMEA0183Msg);
 void HandlePQTMTAR(const tNMEA0183Msg &NMEA0183Msg);
@@ -23,6 +25,8 @@ void HandleNMEA0183Msg(const tNMEA0183Msg &NMEA0183Msg);
 tNMEA0183Handler NMEA0183Handlers[]={
   {"GGA",&HandleGGA},
   {"HDT",&HandleHDT},
+  {"THS",&HandleTHS},
+  {"HPR",&HandleHPR},
   {"RMC",&HandleRMC},
   {"UNIHEADINGA",&HandleUNIHEADINGA},
   {"PQTMANTENNASTATUS",&HandlePQTMANTENNASTATUS},
@@ -298,6 +302,34 @@ void HandleUNIHEADINGA(const tNMEA0183Msg &NMEA0183Msg) {
                   heading, boatData.headingData.heading, pitch, length, solStatStr, posTypeStr, numSolnSVs, numSVs, stnIdStr);
   } else {
     Serial.println("Failed to parse UNIHEADINGA");
+  }
+}
+
+// Handle THS message (True Heading and Status)
+// Format: $--THS,x.x,a*hh
+// Example: $GNTHS,341.3344,A*1F
+void HandleTHS(const tNMEA0183Msg &NMEA0183Msg) {
+  if (NMEA0183Msg.FieldCount() >= 2) {
+    boatData.THS = atof(NMEA0183Msg.Field(0));
+    char status = NMEA0183Msg.Field(1)[0];
+    
+    Serial.printf("THS: Heading=%.4f°, Status=%c\n", boatData.THS, status);
+  } else {
+    Serial.println("Failed to parse THS");
+  }
+}
+
+// Handle HPR message (Heave, Pitch, Roll)
+// Format: $--HPR,x.x,x.x,x.x,x.x*hh (time, heading, pitch, roll)
+// Example: $GPHPR,123456.00,45.5,2.3,1.5*hh
+void HandleHPR(const tNMEA0183Msg &NMEA0183Msg) {
+  if (NMEA0183Msg.FieldCount() >= 2) {
+    // Field 0 is time (optional), Field 1 is heading
+    boatData.HPR = atof(NMEA0183Msg.Field(1));
+    
+    Serial.printf("HPR: Heading=%.4f°\n", boatData.HPR);
+  } else {
+    Serial.println("Failed to parse HPR");
   }
 }
 

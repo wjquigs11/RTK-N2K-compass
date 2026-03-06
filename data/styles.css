@@ -404,3 +404,76 @@ input:checked + .slider:before {
         height: 200px !important;
     }
 }
+
+/* OpenStreetMap Position Drift styles */
+.map-chart {
+    width: 100%;
+    position: relative;
+}
+
+.map-container {
+    width: 100%;
+    height: 300px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    position: relative;
+    background: #f9f9f9;
+}
+
+.map-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.map-button {
+    width: 30px;
+    height: 30px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-size: 16px;
+}
+
+.map-button:hover {
+    background: #f0f0f0;
+}
+
+.chart-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+@media (max-width: 768px) {
+    .map-container {
+        height: 250px;
+    }
+    
+    .map-controls {
+        top: 5px;
+        right: 5px;
+    }
+    
+    .map-button {
+        width: 25px;
+        height: 25px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .map-container {
+        height: 200px;
+    }
+}

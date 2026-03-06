@@ -5,6 +5,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 
 // Data structure to represent heading data from PQTMTAR and UNIHEADING
 struct HeadingData {
@@ -53,6 +54,8 @@ struct tBoatData {
   int GPSQualityIndicator, SatelliteCount, DGPSReferenceStationID;
   bool MOBActivated;
   HeadingData headingData;
+  float THS;
+  float HPR;
   GNRMCData gnrmcData;
   AntennaStatus antennaStatus;
 };
