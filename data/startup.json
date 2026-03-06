@@ -1,0 +1,13 @@
+{
+  "_comment": "HEADING OFFSET X",
+  "commands": [
+    "GPGSV 10",
+    "GPGSVH 10", 
+    "UNIHEADINGA 10",
+    "GNGGA 10",
+    "GPHPR 0.5",
+    "GPTHS 0",
+    "MODE",
+    "SAVECONFIG"
+  ]
+}

@@ -6,6 +6,13 @@ var isFrozen = false;
 // Maximum number of NMEA data lines to display before scrolling
 var maxNmeaLines = 40;
 
+// Track the three heading sources for chart updates
+var headingSources = {
+    UNIHEADINGA: null,
+    THS: null,
+    HPR: null
+};
+
 // Function to get the hostname from /host endpoint
 function getSSEHostname() {
     return fetch('/host')
@@ -387,6 +394,36 @@ function parseGNTHS(sentence) {
     };
 }
 
+// Function to parse HPR sentence (Heave, Pitch, Roll)
+// Format: $--HPR,<time>,<heading>,<pitch>,<roll>*<checksum>
+// Example: $GPHPR,123456.00,45.5,2.3,1.5*hh
+function parseHPR(sentence) {
+    if (!validateNMEAChecksum(sentence)) return null;
+    
+    var fields = sentence.split(',');
+    if (fields.length < 3) return null;
+    
+    // Field 0 is sentence ID, Field 1 is time (optional), Field 2 is heading
+    var heading = parseFloat(fields[2]);
+    if (isNaN(heading)) return null;
+    
+    return {
+        heading: heading,
+        time: fields[1]
+    };
+}
+
+// Helper function to update chart from all heading sources
+function updateChartFromHeadingSources() {
+    if (typeof addChartDataPoint === 'function') {
+        addChartDataPoint(
+            headingSources.UNIHEADINGA || 0,
+            headingSources.THS || 0,
+            headingSources.HPR || 0
+        );
+    }
+}
+
 // Shared function to process NMEA0183 data
 function processNMEAData(sentence) {
     console.log(`DEBUG: Processing NMEA sentence:`, sentence);
@@ -400,9 +437,13 @@ function processNMEAData(sentence) {
             // Update compass with heading data
             updateCompass(data.heading);
             
-            // Update chart with heading data
-            if (typeof addChartDataPoint === 'function') {
-                addChartDataPoint(data.heading);
+            // Update heading source and chart
+            headingSources.UNIHEADINGA = data.heading;
+            updateChartFromHeadingSources();
+            
+            // Update OpenStreetMap heading
+            if (window.osmMap && typeof window.osmMap.updateHeading === 'function') {
+                window.osmMap.updateHeading(data.heading);
             }
             
             displayText = `Heading: ${data.heading.toFixed(2)}° | Pitch: ${data.pitch.toFixed(2)}° | Roll: ${data.roll.toFixed(2)}° | Quality: ${data.quality} | UTC: ${data.utc}`;
@@ -428,6 +469,11 @@ function processNMEAData(sentence) {
                 longitude: data.longitude,
                 utc: data.utc
             });
+            
+            // Update OpenStreetMap position
+            if (window.osmMap && typeof window.osmMap.updatePosition === 'function') {
+                window.osmMap.updatePosition(data.latitude, data.longitude);
+            }
         }
     } else if (sentence.startsWith('$GNGGA,')) {
         data = parseGNGGA(sentence);
@@ -441,6 +487,24 @@ function processNMEAData(sentence) {
                 quality: data.quality,
                 usedSV: data.numSV
             });
+            
+            // Update OpenStreetMap position
+            if (window.osmMap && typeof window.osmMap.updatePosition === 'function') {
+                window.osmMap.updatePosition(data.latitude, data.longitude);
+            }
+            
+            // Update position type for color coding
+            if (window.osmMap && typeof window.osmMap.updatePositionType === 'function') {
+                // Map GGA quality to position type
+                const qualityToType = {
+                    0: 'AUTONOMOUS',
+                    1: 'AUTONOMOUS',
+                    2: 'DGPS',
+                    4: 'RTK_FIXED',
+                    5: 'RTK_FLOAT'
+                };
+                window.osmMap.updatePositionType(qualityToType[data.quality] || 'AUTONOMOUS');
+            }
         }
     } else if (sentence.startsWith('$PQTMANTENNASTATUS,')) {
         data = parsePQTMANTENNASTATUS(sentence);
@@ -457,9 +521,21 @@ function processNMEAData(sentence) {
             // Update compass with heading data
             updateCompass(data.heading);
             
-            // Update chart with heading data
-            if (typeof addChartDataPoint === 'function') {
-                addChartDataPoint(data.heading);
+            // Update heading source and chart
+            headingSources.UNIHEADINGA = data.heading;
+            updateChartFromHeadingSources();
+            
+            // Update OpenStreetMap heading
+            if (window.osmMap && typeof window.osmMap.updateHeading === 'function') {
+                window.osmMap.updateHeading(data.heading);
+            }
+            
+            // Update position type for color coding
+            if (window.osmMap && typeof window.osmMap.updatePositionType === 'function') {
+                // Map position type string to our color scheme
+                let posType = data.posTypeStr || 'AUTONOMOUS';
+                if (posType === 'NONE') posType = 'AUTONOMOUS';
+                window.osmMap.updatePositionType(posType);
             }
             
             // Create comprehensive display text with all available fields
@@ -518,9 +594,13 @@ function processNMEAData(sentence) {
             // Update compass with heading data
             updateCompass(data.heading);
             
-            // Update chart with heading data
-            if (typeof addChartDataPoint === 'function') {
-                addChartDataPoint(data.heading);
+            // Update heading source and chart
+            headingSources.THS = data.heading;
+            updateChartFromHeadingSources();
+            
+            // Update OpenStreetMap heading
+            if (window.osmMap && typeof window.osmMap.updateHeading === 'function') {
+                window.osmMap.updateHeading(data.heading);
             }
             
             var modeText = '';
@@ -538,6 +618,15 @@ function processNMEAData(sentence) {
             updateStatusElements({
                 heading: data.heading
             });
+        }
+    } else if (sentence.startsWith('$GPHPR,') || sentence.startsWith('$GNHPR,')) {
+        data = parseHPR(sentence);
+        if (data) {
+            // Update heading source and chart
+            headingSources.HPR = data.heading;
+            updateChartFromHeadingSources();
+            
+            displayText = `HPR - Heading: ${data.heading.toFixed(4)}°`;
         }
     }
     

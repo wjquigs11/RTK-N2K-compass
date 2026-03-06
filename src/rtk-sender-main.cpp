@@ -1,3 +1,7 @@
+/*
+To access the data stream, use "nc host.local port" for example "nc um982.local 4444"
+*/
+
 #include "include.h"
 
 tBoatData boatData = {0};
@@ -5,16 +9,11 @@ tBoatData boatData = {0};
 #define MAXLEN 64
 char prbuf[PRBUF];
 
+// uncomment if you want to write credentials to preferences
 //#define FIRSTRUN
-#ifdef FIRSTRUN
 String ssid = "yourSSID";
 String pass = "yourPassword";
-String host = "yourHostname";
-#else
-String ssid;
-String pass;
-String host;
-#endif
+String host = "um982";
 
 // Double reset detection
 Preferences preferences;
@@ -30,13 +29,13 @@ bool doubleReset = false;
 // We push these commands at setup()
 // Unfortunately some like "GPGSVH" are not "sticky" and don't persist even after SAVECONFIG
 // so might as well push all the reporting commands
-const char* startupRTKcommands[] = {
+const char* defaultUM982Commands[] = {
   "GPGSV 10",
   "GPGSVH 10",
   "UNIHEADINGA 10",
   "GNGGA 10",
-  //"GPHPR 10",
-  "GPTHS 0.5",
+  "GPHPR 0.5",
+  "GPTHS 0",
   "MODE",
   "SAVECONFIG",
   ""
@@ -44,7 +43,7 @@ const char* startupRTKcommands[] = {
 #endif
 #ifdef WTRTK
 // Quectel commands must have checksum so they need to look like "real" NMEA0183 sentences
-const char* startupRTKcommands[] = {
+const char* defaultWTRTKCommands[] = {
   "$PQTMVERNO*",  // $PQTMVERNO,LC02HBANR01A01S_CLQ,2024/04/23,16:07:36*39
   "$PQTMCFGCNST,R*",  // constellation status
   "$PQTMCFGBLD,R*", // baseline
@@ -56,11 +55,61 @@ const char* startupRTKcommands[] = {
   "$PQTMCFGMSGRATE,W,PQTMTAR,1,1*", // attitude
   "$PQTMSAVEPAR*",
   "$PQTMCFGMSGRATE,R,GSV*", // get GSV output rate
-  "$PQTMCFGMSGRATE,R,GSA*", 
+  "$PQTMCFGMSGRATE,R,GSA*",
   ""
 };
 #endif
-const int startupRTKcommandsLength = sizeof(startupRTKcommands) / sizeof(startupRTKcommands[0]);
+
+// Dynamic startup commands - will be populated from startup.json or defaults
+std::vector<String> startupRTKcommands;
+int startupRTKcommandsLength = 0;
+
+void loadStartupCommands() {
+  startupRTKcommands.clear();
+  
+  File startupFile = LittleFS.open("/startup.json", "r");
+  if (startupFile) {
+    Serial.println("Found startup.json, loading custom commands...");
+    String jsonContent = startupFile.readString();
+    startupFile.close();
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, jsonContent);
+    if (error) {
+      Serial.printf("Failed to parse startup.json: %s\n", error.c_str());
+      Serial.println("Using default commands instead");
+    } else {
+      // Successfully parsed JSON, extract commands
+      JsonArray commands = doc["commands"].as<JsonArray>();
+      if (commands.size() > 0) {
+        Serial.printf("Loading %d commands from startup.json\n", commands.size());
+        for (JsonVariant command : commands) {
+          String cmdStr = command.as<String>();
+          startupRTKcommands.push_back(cmdStr);
+          Serial.printf("  Loaded: %s\n", cmdStr.c_str());
+        }
+        startupRTKcommandsLength = startupRTKcommands.size();
+        return;
+      } else {
+        Serial.println("No commands found in startup.json, using defaults");
+      }
+    }
+  } else {
+    Serial.println("startup.json not found, using default commands");
+  }
+#ifdef UM982
+  const char** defaultCommands = defaultUM982Commands;
+#endif
+#ifdef WTRTK
+  const char** defaultCommands = defaultWTRTKCommands;
+#endif
+  int i = 0;
+  while (defaultCommands[i][0] != '\0') {
+    startupRTKcommands.push_back(String(defaultCommands[i]));
+    i++;
+  }
+  startupRTKcommandsLength = startupRTKcommands.size();
+  Serial.printf("Loaded %d default commands\n", startupRTKcommandsLength);
+}
 
 // minimum frequency to send SSE messages (seconds) so we don't overload asyncTCP
 int SSEfrequency=1;
@@ -106,8 +155,10 @@ void setup() {
   if (LittleFS.begin()) {
     Serial.println("opened LittleFS");
     readlittlefs();
+    loadStartupCommands(); // Load startup commands from JSON or defaults
   } else {
     Serial.println("failed to open LittleFS");
+    loadStartupCommands(); // Load default commands if LittleFS fails
   }
   Serial.println("Starting WiFi connection...");
 #ifdef FIRSTRUN
@@ -117,10 +168,13 @@ void setup() {
   preferences.putString("pass",pass);
   preferences.putString("host",host);
 #else
-  ssid = preferences.getString("ssid");
+  String tStr = preferences.getString("ssid");
+  if (!tStr.isEmpty()) ssid = tStr;
   Serial.printf("ssid = %s\n",ssid);
-  pass = preferences.getString("pass");
-  host = preferences.getString("host","wit");
+  tStr = preferences.getString("pass");
+  if (!tStr.isEmpty()) pass = tStr;
+  tStr = preferences.getString("host","um982");
+  if (!tStr.isEmpty()) host = tStr;
 #endif
   preferences.end();
   if (ssid.isEmpty()) {
@@ -226,11 +280,11 @@ void setupUMsender() {
   char command[MAXLEN];
   for (int i=0; i<startupRTKcommandsLength; i++) {
 #ifdef WTRTK
-    int cksum = calculateNMEAChecksum(startupRTKcommands[i]);
-    snprintf(command,MAXLEN,"%s%02X",startupRTKcommands[i],cksum);
+    int cksum = calculateNMEAChecksum(startupRTKcommands[i].c_str());
+    snprintf(command,MAXLEN,"%s%02X",startupRTKcommands[i].c_str(),cksum);
     Serial.println(command);
 #else
-    strcpy(command,startupRTKcommands[i]);
+    strcpy(command,startupRTKcommands[i].c_str());
 #endif
     UMserial.println(command);
     notifyTCPclients(command);
